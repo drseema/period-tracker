@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Corrected Period Tracker with UTC Date Handling</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 900px; margin: auto; padding: 20px; }
+  label { display: block; margin-top: 15px; font-weight: bold; }
+  input, button { padding: 8px; margin-top: 5px; max-width: 300px; width: 100%; }
+  button { cursor: pointer; background-color: #4285f4; border: none; color: white; font-weight: bold; border-radius: 4px; }
+  button:hover { background-color: #3367d6; }
+  .month-block { margin-bottom: 30px; }
+  .month-label { font-size: 1.2em; font-weight: bold; margin-bottom: 8px; }
+  .weekdays { display: flex; font-weight: bold; padding: 0 5px; }
+  .weekday { flex: 1; text-align: center; }
+  .days { display: flex; flex-wrap: wrap; }
+  .day {
+    box-sizing: border-box;
+    width: 36px;
+    height: 36px;
+    line-height: 36px;
+    text-align: center;
+    margin: 6px;
+    border-radius: 50%;
+    cursor: default;
+    font-weight: bold;
+    font-size: 16px;
+    box-shadow: 0 0 3px #ddd;
+    position: relative;
+    color: white;
+  }
+  .day.empty { background: transparent; box-shadow: none; cursor: default; }
+  .period { background-color: #f28b82; }
+  .pre-period { background-color: #fbbc04; }
+  .post-period { background-color: #34a853; }
+  .ovulation { background-color: #4285f4; font-weight: bold; }
+  .legend {
+    margin-top: 15px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    max-width: 700px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    font-size: 0.9em;
+  }
+  .legend-color {
+    width: 24px;
+    height: 24px;
+    margin-right: 8px;
+    border-radius: 50%;
+  }
+  .day:hover .tooltip {
+    visibility: visible;
+    opacity: 1;
+  }
+  .tooltip {
+    visibility: hidden;
+    background-color: black;
+    color: #fff;
+    text-align: center;
+    border-radius: 5px;
+    padding: 4px 8px;
+    position: absolute;
+    z-index: 10;
+    bottom: 110%;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 0;
+    transition: opacity 0.3s;
+    font-size: 0.8em;
+    white-space: nowrap;
+  }
+  .tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: black transparent transparent transparent;
+  }
+</style>
+</head>
+<body>
+
+<h2>Corrected Period Tracker Tool (UTC Date Handling)</h2>
+<form id="trackerForm">
+  <label for="lastPeriod">Date of your last period:</label>
+  <input type="date" id="lastPeriod" required />
+  <label for="periodLength">How many days did it last?</label>
+  <input type="number" id="periodLength" min="1" max="10" value="5" required />
+  <label for="cycleLength">What’s your usual cycle length?</label>
+  <input type="number" id="cycleLength" min="20" max="45" value="28" required />
+  <button type="submit">Show Tracker</button>
+</form>
+
+<div id="output"></div>
+
+<script>
+  // Normalize date to UTC midnight
+  function normalizeDate(d) {
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  }
+
+  // Add days preserving UTC date
+  function addDaysUTC(date, days) {
+    const result = new Date(date.getTime());
+    result.setUTCDate(result.getUTCDate() + days);
+    return result;
+  }
+
+  function getMonthName(date) {
+    return date.toLocaleString('default', { month: 'long', year: 'numeric' });
+  }
+
+  // Calculate cycle day with UTC-aware dates and rounding to days difference
+  function getCycleDay(date, lastPeriod, cycleLength) {
+    const normDate = normalizeDate(date);
+    const normLast = normalizeDate(lastPeriod);
+    const diffMs = normDate - normLast;
+    const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+    return ((diffDays % cycleLength) + cycleLength) % cycleLength + 1;
+  }
+
+  document.getElementById('trackerForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const lastPeriodRaw = document.getElementById('lastPeriod').value;
+    const lastPeriod = new Date(lastPeriodRaw);
+    const periodLength = parseInt(document.getElementById('periodLength').value);
+    const cycleLength = parseInt(document.getElementById('cycleLength').value);
+
+    if (!lastPeriodRaw || isNaN(lastPeriod.getTime()) || periodLength <= 0 || cycleLength <= 0 || cycleLength < periodLength) {
+      alert('Please enter valid data.');
+      return;
+    }
+
+    const normLastPeriod = normalizeDate(lastPeriod);
+
+    // Date range: approx 3 months before to 3 months after
+    const startDate = addDaysUTC(normLastPeriod, -90);
+    const endDate = addDaysUTC(normLastPeriod, 90);
+
+    let months = [];
+    let tmpDate = new Date(startDate);
+
+    while (tmpDate <= endDate) {
+      const monthStart = new Date(Date.UTC(tmpDate.getUTCFullYear(), tmpDate.getUTCMonth(), 1));
+      const monthEnd = new Date(Date.UTC(tmpDate.getUTCFullYear(), tmpDate.getUTCMonth() + 1, 0));
+      months.push({ start: monthStart, end: monthEnd });
+      tmpDate.setUTCMonth(tmpDate.getUTCMonth() + 1);
+    }
+
+    let html = '';
+
+    months.forEach(month => {
+      html += `<div class="month-block">`;
+      html += `<div class="month-label">${getMonthName(month.start)}</div>`;
+      html += `<div class="weekdays">
+                <div class="weekday">Sun</div><div class="weekday">Mon</div><div class="weekday">Tue</div>
+                <div class="weekday">Wed</div><div class="weekday">Thu</div><div class="weekday">Fri</div>
+                <div class="weekday">Sat</div>
+              </div>`;
+      html += `<div class="days">`;
+
+      const firstWeekday = month.start.getUTCDay();
+      for (let i = 0; i < firstWeekday; i++) {
+        html += `<div class="day empty"></div>`;
+      }
+
+      for (let d = 1; d <= month.end.getUTCDate(); d++) {
+        const thisDate = new Date(Date.UTC(month.start.getUTCFullYear(), month.start.getUTCMonth(), d));
+
+        const cycleDay = getCycleDay(thisDate, normLastPeriod, cycleLength);
+
+        let className = '';
+        let title = '';
+
+        if (cycleDay >= 1 && cycleDay <= periodLength) {
+          className = 'period';
+          title = 'Period Day';
+        } else if (cycleDay >= cycleLength - 3 && cycleDay <= cycleLength) {
+          className = 'pre-period';
+          title = 'Pre-Period (PMS)';
+        } else if (cycleDay === cycleLength - 14) {
+          className = 'ovulation';
+          title = 'Ovulation Day';
+        } else {
+          className = 'post-period';
+          title = 'Post-Period';
+        }
+
+        html += `<div class="day ${className}" title="${title} (${thisDate.toISOString().split('T')[0]})">
+                  ${d}
+                  <div class="tooltip">${title}<br>${thisDate.toISOString().split('T')[0]}</div>
+                </div>`;
+      }
+
+      html += `</div>`;
+
+      html += `
+      <div class="legend" style="margin:13px 0 20px 0;display:flex;gap:20px;flex-wrap:wrap;">
+        <div class="legend-item"><div class="legend-color period"></div>Period Days</div>
+        <div class="legend-item"><div class="legend-color pre-period"></div>Pre-Period (PMS)</div>
+        <div class="legend-item"><div class="legend-color post-period"></div>Post-Period</div>
+        <div class="legend-item"><div class="legend-color ovulation"></div>Ovulation Day</div>
+      </div>`;
+
+      html += `</div>`;
+    });
+
+    document.getElementById('output').innerHTML = html;
+  });
+</script>
+
+</body>
+</html>
